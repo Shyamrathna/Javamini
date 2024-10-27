@@ -1,0 +1,202 @@
+import javafx.application.Application;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.layout.VBox;
+import javafx.stage.Stage;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Cursor;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+
+public class VotingSystem extends Application {
+
+    private static final String URL = "jdbc:mysql://localhost:3306/voting_system";
+    private static final String USER = "root"; // Replace with your MySQL username
+    private static final String PASSWORD = "Aravind@2005"; // Replace with your MySQL password
+
+    private String voterId;
+
+    public static void main(String[] args) {
+        launch(args);
+    }
+
+    @Override
+    public void start(Stage primaryStage) {
+        primaryStage.setTitle("Online Voting System");
+        showLoginPage(primaryStage);
+    }
+
+    private void showLoginPage(Stage stage) {
+        VBox root = new VBox(10);
+        root.setPadding(new Insets(20));
+        root.setAlignment(Pos.CENTER);
+
+        Scene scene = new Scene(root, 650, 300);
+
+        // Logo Image
+        Image logo = new Image("ecilogo.png"); // Load the logo image
+        ImageView logoView = new ImageView(logo);
+        logoView.setFitHeight(60);
+        logoView.setPreserveRatio(true);
+
+        // Heading Label
+        Label headingLabel = new Label("ELECTION COMMISSION OF INDIA ONLINE VOTING PORTAL");
+        headingLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold;");
+
+        // Label for voter ID input
+        Label voterIdLabel = new Label("Enter Voter ID:");
+        voterIdLabel.setStyle("-fx-font-size: 14px;");
+
+        // Voter Input Section
+        TextField voterIdField = new TextField();
+        voterIdField.setPromptText("Enter Voter ID");
+        voterIdField.setPrefWidth(300);
+        voterIdField.setMaxWidth(300);
+        voterIdField.setStyle("-fx-font-size: 14px; -fx-padding: 10px; -fx-background-radius: 20; " +
+                               "-fx-background-color: #f0f0f0; -fx-border-radius: 20; " +
+                               "-fx-border-color: #cccccc; -fx-border-width: 2;");
+
+        Button submitButton = createSubmitButton(voterIdField, stage);
+
+        root.getChildren().addAll(logoView, headingLabel, voterIdLabel, voterIdField, submitButton);
+
+        stage.setScene(scene);
+        stage.show();
+    }
+
+    private Button createSubmitButton(TextField voterIdField, Stage stage) {
+        Button submitButton = new Button("Submit");
+        submitButton.setStyle("-fx-font-size: 14px; -fx-padding: 10px; -fx-background-color: #4CAF50; " +
+                               "-fx-text-fill: white; -fx-background-radius: 20; -fx-border-radius: 20;");
+        submitButton.setCursor(Cursor.HAND); // Change cursor to hand
+
+        // Handle voter ID submission
+        submitButton.setOnAction(event -> {
+            voterId = voterIdField.getText();
+            if (isVoterValid(voterId)) {
+                showVotingPage(stage);
+            } else {
+                showAlert(Alert.AlertType.ERROR, "Invalid Voter ID");
+            }
+        });
+
+        return submitButton;
+    }
+
+    private void showVotingPage(Stage stage) {
+        VBox root = new VBox(10);
+        root.setPadding(new Insets(20));
+        root.setAlignment(Pos.CENTER);
+
+        Scene scene = new Scene(root, 650, 300);
+
+        // Voting Section
+        Label label = new Label("Select a Candidate:");
+        label.setStyle("-fx-font-size: 14px;");
+
+        // Radio buttons for candidates
+        RadioButton candidate1 = new RadioButton("DMK");
+        RadioButton candidate2 = new RadioButton("ADMK");
+        RadioButton candidate3 = new RadioButton("NTK");
+        RadioButton candidate4 = new RadioButton("BJP");
+        RadioButton candidate5 = new RadioButton("TVK");
+
+        // Group radio buttons
+        ToggleGroup candidateGroup = new ToggleGroup();
+        candidate1.setToggleGroup(candidateGroup);
+        candidate2.setToggleGroup(candidateGroup);
+        candidate3.setToggleGroup(candidateGroup);
+        candidate4.setToggleGroup(candidateGroup);
+        candidate5.setToggleGroup(candidateGroup);
+
+        Button voteButton = new Button("Vote");
+        voteButton.setStyle("-fx-font-size: 14px; -fx-padding: 10px; -fx-background-color: #2196F3; " +
+                             "-fx-text-fill: white; -fx-background-radius: 20; -fx-border-radius: 20;");
+        voteButton.setCursor(Cursor.HAND); // Change cursor to hand
+
+        root.getChildren().addAll(label, candidate1, candidate2, candidate3, candidate4, candidate5, voteButton);
+
+        // Handle voting
+        voteButton.setOnAction(event -> {
+            if (hasVoted(voterId)) {
+                showAlert(Alert.AlertType.WARNING, "You have already voted!");
+                stage.close(); // Close the voting window
+                return;
+            }
+
+            int candidateId = getSelectedCandidateId(candidateGroup);
+            if (candidateId != 0) {
+                castVote(voterId, candidateId);
+                showAlert(Alert.AlertType.INFORMATION, "Vote cast successfully! You cannot vote again.");
+                stage.close(); // Close the voting window
+            } else {
+                showAlert(Alert.AlertType.WARNING, "Please select a candidate to vote.");
+            }
+        });
+
+        stage.setScene(scene);
+    }
+
+    private int getSelectedCandidateId(ToggleGroup candidateGroup) {
+        RadioButton selectedCandidate = (RadioButton) candidateGroup.getSelectedToggle();
+        if (selectedCandidate != null) {
+            if (selectedCandidate.getText().equals("DMK")) return 1;
+            if (selectedCandidate.getText().equals("ADMK")) return 2;
+            if (selectedCandidate.getText().equals("NTK")) return 3;
+            if (selectedCandidate.getText().equals("BJP")) return 4;
+            if (selectedCandidate.getText().equals("TVK")) return 5;
+        }
+        return 0; // No candidate selected
+    }
+
+    private boolean hasVoted(String voterId) {
+        String query = "SELECT * FROM votes WHERE voter_id = ?";
+        try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
+             PreparedStatement pst = conn.prepareStatement(query)) {
+            pst.setString(1, voterId);
+            ResultSet rs = pst.executeQuery();
+            return rs.next(); // Returns true if the voter has already voted
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Database connection failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean isVoterValid(String voterId) {
+        String query = "SELECT * FROM voters WHERE voter_id = ?";
+        try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
+             PreparedStatement pst = conn.prepareStatement(query)) {
+            pst.setString(1, voterId);
+            ResultSet rs = pst.executeQuery();
+            return rs.next(); // Returns true if the voter exists
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Database connection failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private void castVote(String voterId, int candidateId) {
+        String query = "INSERT INTO votes (voter_id, candidate_id) VALUES (?, ?)";
+        try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
+             PreparedStatement pst = conn.prepareStatement(query)) {
+            pst.setString(1, voterId);
+            pst.setInt(2, candidateId);
+            pst.executeUpdate(); // Execute the insert query
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void showAlert(Alert.AlertType alertType, String message) {
+        Alert alert = new Alert(alertType, message);
+        alert.show();
+    }
+}
